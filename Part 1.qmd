@@ -1,0 +1,1166 @@
+---
+title: "Part I: Spatial Data"
+author: "Putri Nisrina"
+format:
+  html:
+    theme: minty
+    toc: true
+    toc-location: left
+    smooth-scroll: true
+    code-copy: true
+---
+
+# 1 Types of spatial data
+
+Spatial data are used across a wide range of fields to support decision-making, including environment, public health, ecology, agriculture, urban planning, economy, and society.
+
+## 1.1 Areal data
+
+Areal data usually arise when the number of events corresponding to some variable of interest are aggregated in areas.
+
+```{r}
+library(sf)
+library(mapview)
+d <- st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
+mapview(d, zcol = "SID74")
+```
+
+Example of areal data. Number of sudden infant deaths in counties of North Carolina, USA, in 1974.
+
+```{r}
+library(spData)
+library(ggplot2)
+d <- st_read(system.file("shapes/columbus.gpkg", package = "spData"), quiet = TRUE)
+st_crs(d) <- NA
+ggplot(d) + geom_sf(aes(fill = INC))
+```
+
+Example of areal data. Household income in \$1000 USD in neighborhoods in Columbus, Ohio, in 1980.
+
+```{r}
+library(terra)
+d <- rast(system.file("ex/elev.tif", package = "terra"))
+plot(d)
+```
+
+Example of areal data. Elevation at raster grid cells covering Luxembourg.
+
+## 1.2 Geostatistical data
+
+For example, we can use air pollution measurements at a number of monitoring stations to predict air pollution at other locations taking into account spatial autocorrelation and other factors that are known to predict the outcome of interest.
+
+```{r}
+library(sp)
+library(sf)
+library(mapview)
+data(meuse)
+meuse <- st_as_sf(meuse, coords = c("x", "y"), crs = 28992)
+mapview(meuse, zcol = "lead", map.types = "CartoDB.Voyager")
+```
+
+Example of geostatistical data. Topsoil lead concentrations at locations sampled in a flood plain of the river Meuse, The Netherlands.
+
+```{r}
+library(spData)
+mapview(properties, zcol = "prpsqm")
+```
+
+Example of geostatistical data. Price per square meter of a set of apartments in Athens, Greece, in 2017.
+
+```{r}
+library(malariaAtlas)
+d <- getPR(country = "Zimbabwe", species = "BOTH")
+ggplot2::autoplot(d)
+```
+
+Example of geostatistical data. Malaria prevalence at specific locations in Zimbabwe.
+
+## 1.3 Point patterns
+
+Point patterns arise when the variable to be analyzed corresponds to the location of events.
+
+```{r}
+library(spatstat)
+plot(clmfires, use.marks = FALSE, pch = ".")
+```
+
+Data clmfires is a marked point pattern containing information of each fire, depicts the location of the fires without the mark.
+
+```{r}
+library(spatstat)
+plot(hamster)
+```
+
+This figure also shows the positions of cell nuclei in a histological section of a tissue from a lymphoma in the kidney of a hamster from spatstat. The nuclei are classified as either “pyknotic” (corresponding to dying cells) or “dividing” (corresponding to cells arrested in the act of dividing).
+
+```{r}
+library(sparr)
+data(pbc)
+plot(unmark(pbc[which(pbc$marks == "case"), ]), main = "cases")
+axis(1)
+axis(2)
+title(xlab = "Easting", ylab = "Northing")
+plot(unmark(pbc[which(pbc$marks == "control"), ]), pch = 3, main = "controls")
+axis(1)
+axis(2)
+title(xlab = "Easting", ylab = "Northing")
+```
+
+Examples of point patterns. Top: Locations of fires in Castilla-La Mancha, Spain, between 1998 and 2007. Bottom: Locations and types of cells in a tissue.
+
+## 1.4 Spatio-temporal data
+
+Spatio-temporal data arise when information is both spatially and temporally referenced. Thus, we can consider spatial data as temporal aggregations or temporal snapshots of a spatio-temporal process.
+
+## 1.5 Spatial functional data
+
+Spatial functional data arise when the three types of spatial data (areal, geostatistical, and point patterns) are combined with random functions.
+
+## 1.6 Mobility data
+
+Besides the three classical types of spatial data (i.e., areal, geostatistical, and point patterns), we can also consider other spatial data such as flows containing the number of individuals or other elements moving between locations.
+
+```{r}
+library("epiflows")
+data("Brazil_epiflows")
+
+loc <- merge(x = YF_locations, y = YF_coordinates,
+             by.x = "location_code", by.y = "id", sort = FALSE)
+ef <- make_epiflows(flows = YF_flows, locations = loc,
+                   coordinates = c("lon", "lat"),
+                   pop_size = "location_population",
+                   duration_stay = "length_of_stay",
+                   num_cases = "num_cases_time_window",
+                   first_date = "first_date_cases",
+                   last_date = "last_date_cases")
+ef
+```
+
+We can use this data to create an epiflows object called ef that allows us to use the prediction and visualization functions.
+
+# 2 Spatial data in R
+
+## 2.1 Vector data
+
+The sf package allows us to work with vector data which is used to represent points, lines, and polygons.
+
+### 2.1.1 Shapefile
+
+**Vector data** are commonly stored in the **shapefile** format.\
+A shapefile is **not a single file**, but a collection of related files that work together.
+
+The three mandatory components are:
+
+-   **.shp** – contains the geometry data,
+
+-   **.shx** – a positional index that allows quick access to the geometry,
+
+-   **.dbf** – stores attribute data for each feature.
+
+    Additional optional files may include:
+
+<!-- -->
+
+-   **.prj** – specifies the map projection,
+
+-   **.sbn** and **.sbx** – spatial index files,
+
+-   **.shp.xml** – contains spatial metadata in XML format.
+
+```{r}
+library(sf)
+pathshp <- system.file("shape/nc.shp", package = "sf")
+```
+
+```{r}
+map<-st_read(pathshp,quiet= TRUE)
+class(map)
+```
+
+```{r}
+head(map)
+```
+
+```{r}
+plot(map[1]) #plotfirstattribute
+```
+
+Map of the first attribute of the ‘sf‘ object representing the counties of North Carolina, USA.
+
+## 2.2 Raster data
+
+Raster data (also referred to as grid data) is a spatial data structure that divides the region of study into rectangles of the same size called cells or pixels, and that can store one or more values for each of these cells.
+
+### 2.2.1 GeoTIFF
+
+Raster data often come in GeoTIFF format which has extension .tif.
+
+```{r}
+library(terra)
+pathraster <- system.file("ex/elev.tif", package = "terra")
+r <- terra::rast(pathraster)
+r
+plot(r)
+```
+
+Map of raster data representing the elevation of Luxembourg.
+
+## 2.3 Coordinate Reference System
+
+### 2.3.1 Geographic CRS
+
+In a geographic CRS, latitude and longitude values are used to identify locations on the Earth’s three-dimensional ellipsoid surface.
+
+![](images/clipboard-301359724.png)
+
+Latitude values range from **–90° at the South Pole to +90° at the North Pole**. **Longitude** values measure the angle **east or west of the Prime Meridian**.
+
+![](images/clipboard-1333269238.png)
+
+Latitude and longitude coordinates may be expressed in degrees, minutes, and seconds, or in decimal degrees.
+
+### Projected CRS
+
+Projected CRSs use Cartesian coordinates to reference a location on a two-dimensional representation of the Earth.
+
+![World maps with Mercator (left) and Robinson (right) projections.](images/clipboard-2727988247.png)
+
+A common projection is the Universal Transverse Mercator (UTM) projection. This projection is conformal, meaning it preserves angles and therefore maintains shapes over small areas.
+
+### 2.3.3 EPSG codes
+
+Most common CRSs can be specified using their EPSG (European Petroleum Survey Group) codes or their Proj4 strings. Common spatial projections can be found at <https://spatialreference.org/ref/>. Details of a given projection can be inspected using the `st_crs()` function of the **sf** package. For example, EPSG code 4326 refers to the WGS84 longitude/latitude projection.
+
+```{r}
+st_crs("EPSG:4326")$Name
+```
+
+```{r}
+ st_crs("EPSG:4326")$proj4string
+```
+
+```{r}
+st_crs("EPSG:4326")$epsg
+```
+
+###  2.3.4 Transforming CRS with sf and terra
+
+```{r}
+library(sf)
+pathshp <- system.file("shape/nc.shp", package = "sf")
+map <- st_read(pathshp, quiet = TRUE)
+# Get CRS
+# st_crs(map)
+# Transform CRS
+map2 <- st_transform(map, crs = "EPSG:4326")
+# Get CRS
+# st_crs(map2)
+```
+
+```{r}
+library(terra)
+pathraster <- system.file("ex/elev.tif", package = "terra")
+r <- rast(pathraster)
+# Get CRS
+# crs(r)
+# Transform CRS
+r2 <- terra::project(r, "EPSG:2169")
+# Get CRS
+# crs(r2)
+```
+
+Alternatively, if we want the transformed data to align exactly with other raster data we are using, we can project it using an existing raster that has the desired geometry.
+
+```{r}
+# x is existing raster
+# r is raster we project
+# r2 <- terra::project(r, x)
+```
+
+## 2.4 Old spatial packages
+
+Before the **sf** package was developed, the **sp** package was used to represent and work with vector spatial data. The **sp**, **rgdal** (Bivand et al., 2023), **rgeos** (Bivand and Rundel, 2022), and **maptools** (Bivand and Lewin-Koh, 2022) packages are no longer maintained and have been retired.
+
+# 3 The sf package for spatial vector data
+
+## 3.1 The sf package 
+
+```{r}
+library(sf)
+pathshp <- system.file("shape/nc.shp", package = "sf")
+nc <- st_read(pathshp, quiet = TRUE)
+class(nc)
+```
+
+A sf object contains the following objects of class sf, sfc and
+sfg:
+• sf (simple feature): each row of the data.frame is a single simple feature consisting of attributes and geometry.
+• sfc (simple feature geometry list-column): the geometry column of the data.frame is a list-column of class sfc with the geometry of each simple feature.
+• sfg (simple feature geometry): each of the rows of the sfc list-column corresponds to the simple feature geometry (sfg) of a single simple feature.
+
+```{r}
+head(nc)
+```
+
+```{r}
+plot(nc)
+```
+
+object representing the counties of North Carolina, USA, and associated information.
+
+```{r}
+nc[1,] # first row
+```
+
+```{r}
+nc[nc$NAME == "Ashe", ] # row with NAME "Ashe"
+```
+
+```{r}
+nc[1, "NWBIR74"] # first row, column with name NWBIR74
+```
+
+```{r}
+nc[1, "NWBIR74", drop = TRUE] # drop geometry
+```
+
+```{r}
+# Geometries printed in abbreviated form
+st_geometry(nc)
+```
+
+```{r}
+# View complete geometry by selecting one
+st_geometry(nc)[[1]]
+```
+
+##  3.2 Creating a sf object
+
+Simple feature geometries (sfg objects) can be, for example, of type POINT (single point), MULTIPOINT (set of points), or POLYGON (polygon), and can be created using the functions `st_point()`, `st_multipoint()`, and `st_polygon()`, respectively. Here, we create an sf object containing two single points, a set of points, and a polygon, each with one attribute.
+
+```{r}
+library(sf)
+library(ggplot2)
+
+# Single points (point as a vector)
+p1_sfg <- st_point(c(2, 2))
+p2_sfg <- st_point(c(2.5, 3))
+
+# Set of points (points as a matrix)
+p <- rbind(
+  c(6, 2),
+  c(6.1, 2.6),
+  c(6.8, 2.5),
+  c(6.2, 1.5),
+  c(6.8, 1.8)
+)
+mp_sfg <- st_multipoint(p)
+
+# Polygon: sequence of points forming a closed, non-self-intersecting ring
+# The first ring denotes the exterior ring;
+# zero or more subsequent rings denote holes within it
+p1 <- rbind(c(10, 0), c(11, 0), c(13, 2),
+            c(12, 4), c(11, 4), c(10, 0))
+p2 <- rbind(c(11, 1), c(11, 2), c(12, 2), c(11, 1))
+pol_sfg <- st_polygon(list(p1, p2))
+
+# Create sf object
+p_sfc <- st_sfc(p1_sfg, p2_sfg, mp_sfg, pol_sfg)
+df <- data.frame(v1 = c("A", "B", "C", "D"))
+p_sf <- st_sf(df, geometry = p_sfc)
+
+# Plot single points, multipoint, and polygon
+ggplot(p_sf) +
+  geom_sf(aes(col = v1), size = 3) +
+  theme_bw()
+```
+
+sf object representing two single points, a set of points, and a polygon, with one attribute.
+
+## 3.3 st\_\*() functions 
+
+Common functions to manipulate sf objects include:\
+• `st_read()` – reads an sf object\
+• `st_write()` – writes an sf object\
+• `st_crs()` – gets or sets a new coordinate reference system (CRS)\
+• `st_transform()` – transforms data to a new CRS\
+• `st_intersection()` – intersects sf objects\
+• `st_union()` – combines several sf objects into one\
+• `st_simplify()` – simplifies an sf object\
+• `st_coordinates()` – retrieves coordinates of an sf object\
+• `st_as_sf()` – converts another object type to an sf object
+
+We can read a sf object as follows:
+
+```{r}
+library(sf)
+library(ggplot2)
+map <- read_sf(system.file("shape/nc.shp", package = "sf"))
+```
+
+We can inspect the first rows of the sf object map with head().
+
+```{r}
+head(map)
+```
+
+We can delete some of the polygons by taking a subset of the rows of map.
+
+```{r}
+# Delete polygon
+map <- map[-which(map$FIPS %in% c("37125", "37051")), ]
+ggplot(map) + geom_sf(aes(fill = SID79))
+```
+
+We can use st_union() with argument by_feature = FALSE to combine all geometries together.
+
+```{r}
+# Combine geometries
+ggplot(st_union(map, by_feature = FALSE) %>%
+         st_sf()) + geom_sf()
+```
+
+The boundaries of a map can be simplified with the
+st_simplify() function.
+
+```{r}
+ # Simplify
+map_utm <- st_transform(map, 32617)
+map_simplified <- st_simplify(map_utm, dTolerance = 10000)
+ggplot(map_simplified) +
+  geom_sf(fill = "lightblue", color = "gray40") +
+  theme_minimal() +
+  labs(title = "Simplified North Carolina Map (10 km tolerance)")
+```
+
+## 3.4 Transforming point data to a sf object 
+
+The `st_as_sf()` function allows us to convert a foreign object into an sf object. For example, we can have a data frame containing the coordinates of several locations along with their attributes, which we can then convert into an sf object.
+
+```{r}
+library(sf)
+library(mapview)
+d <- data.frame(
+  place = c("London", "Paris", "Madrid", "Rome"),
+  long = c(-0.118092, 2.349014, -3.703339, 12.496366),
+  lat = c(51.509865, 48.864716, 40.416729, 41.902782),
+  value = c(200, 300, 400, 500))
+class(d)
+dsf <- st_as_sf(d, coords = c("long", "lat"))
+st_crs(dsf) <- 4326
+class(dsf)
+```
+
+```{r}
+mapview(dsf)
+```
+
+## 3.5 Counting the number of points within polygons
+
+We can use the `st_intersects()` function from **sf** to count the number of points within the polygons of an sf object. The returned object is a list containing the feature IDs that intersect each polygon. We can then use the `lengths()` function to calculate the number of points inside each feature.
+
+```{r}
+library(sf)
+library(ggplot2)
+
+# Map with divisions (sf object)
+map <- read_sf(system.file("shape/nc.shp", package = "sf"))
+
+# Generate random points within the polygons (sf geometry list-column sfc)
+points <- st_sample(map, size = 100, exact = FALSE)
+
+# Convert points (sfc) into an sf object so it can be used in ggplot easily
+points_sf <- st_sf(geometry = points)
+
+# Plot map and points
+ ggplot()+geom_sf(data= map)+geom_sf(data=points)
+```
+
+Points within polygons.
+
+```{r}
+# Intersection: which points fall in which polygons
+inter <- st_intersects(map, points_sf)
+
+# Add point count to each polygon
+map$count <- lengths(inter)
+
+# Plot number of points within each polygon
+ ggplot(map)+geom_sf(aes(fill = count))
+```
+
+Number of points within polygons.
+
+## 3.6 Identifying polygons containing points
+
+```{r}
+library(sf)
+library(ggplot2)
+library(dplyr)
+
+# Map with divisions (sf object)
+map <- read_sf(system.file("shape/nc.shp", package = "sf"))
+
+# Generate random points within the polygons
+points <- st_sample(map, size = 3) %>%
+  st_as_sf()
+
+# Find which polygon each point falls inside
+# (note: first argument = points, second = polygons)
+inter <- st_intersects(points, map)
+
+# Add column with the name of the area containing each point
+points$areaname <- map[unlist(inter), "NAME", drop = TRUE]
+
+# Show points with corresponding area name
+points
+```
+
+```{r}
+# Map
+ggplot(map) +
+  geom_sf() +
+  geom_sf(data = points) +
+  geom_sf_label(
+    data = map[unlist(inter), ],
+    aes(label = NAME),
+    nudge_y = 0.2
+  )
+```
+
+## 3.7 Joining map and data
+
+Sometimes, a map and its corresponding data are available separately, and we may want to create an **sf** object that combines the map with its related data for easier manipulation and plotting. This can be done by joining the map and data using the `left_join()` function from the **dplyr** package.
+
+```{r}
+library(rnaturalearth)
+map <- ne_countries(returnclass = "sf")
+```
+
+```{r}
+library(wbstats)
+indicators <- wb_search(pattern = "pollution")
+d <- wb_data(indicator = "EN.ATM.PM25.MC.M3", start_date = 2016, end_date = 2016)
+```
+
+Then, we use the `left_join()` function from **dplyr** to merge the map and data, specifying the variable(s) to join by using the `by` argument. In this example, we use the ISO3 standard country codes instead of country names, as names may differ between the map and the data frame. Figure 3.7 shows the resulting map created using ggplot2.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(viridis)
+map1 <- left_join(map, d, by = c("iso_a3" = "iso3c"))
+ggplot(map1) + geom_sf(aes(fill = EN.ATM.PM25.MC.M3)) +
+  scale_fill_viridis() + labs(fill = "PM2.5") + theme_bw()
+```
+
+PM2.5 values in each of the world countries in 2016.
+
+Note that when using `left_join()`, the resulting object's class matches that of the first argument.\
+Thus, `left_join(sf_object, data.frame_object)` produces an sf object, while `left_join(data.frame_object, sf_object)` produces a data frame.
+
+```{r}
+map1 <- left_join(map, d, by = c("iso_a3" = "iso3c"))
+class(map1)
+```
+
+```{r}
+d1 <- left_join(d, map, by = c("iso3c" = "iso_a3"))
+class(d1)
+```
+
+# 4 The terra package for raster and vector data
+
+## 4.1 Raster Data
+
+```{r}
+library(terra)
+pathraster <- system.file("ex/elev.tif", package = "terra")
+r <- rast(pathraster)
+plot(r)
+```
+
+We can also use `rast()` to create a `SpatRaster` object by specifying the number of columns, number of rows, and the minimum and maximum x and y values.
+
+```{r}
+r <- rast(ncol = 10, nrow = 10, xmin = -150, xmax = -80, ymin = 20, ymax = 60)
+r
+```
+
+```{r}
+nrow(r) # number of rows
+ncol(r) # number of columns
+dim(r) # dimension
+ncell(r) # number of cells
+```
+
+```{r}
+values(r) <- 1:ncell(r)
+r2 <- r * r
+s <- c(r, r2)
+plot(s[[2]]) # layer 2
+```
+
+Many generic functions can be used to operate with rasters, as shown in the following examples.
+
+```{r}
+plot(min(s))
+plot(r + r + 10)
+plot(round(r))
+plot(r == 1)
+```
+
+## 4.2 Vector data
+
+```{r}
+pathshp <- system.file("ex/lux.shp", package = "terra")
+v <- vect(pathshp)
+```
+
+```{r}
+# Longitude and latitude values
+long <- c(-0.118092, 2.349014, -3.703339, 12.496366)
+lat <- c(51.509865, 48.864716, 40.416729, 41.902782)
+longlat <- cbind(long, lat)
+
+# CRS
+crspoints <- "+proj=longlat +datum=WGS84"
+
+# Attributes for points
+d <- data.frame(
+  place = c("London", "Paris", "Madrid", "Rome"),
+  value = c(200, 300, 400, 500)
+)
+
+# SpatVector object
+pts <- vect(longlat, atts = d, crs = crspoints)
+pts
+
+# Plot
+plot(pts)
+
+```
+
+## 4.3 Cropping, masking, and aggregating raster data
+
+```{r}
+library(terra)
+r <- geodata::worldclim_country(country = "Spain", var = "tavg", res = 10, path = tempdir())
+plot(r)
+```
+
+We can average the temperature raster data over months with the mean() function.
+
+```{r}
+r <- mean(r)
+plot(r)
+```
+
+We also download the map of Spain with the rnaturalearth package (South, 2017), and delete the Canary Islands region.
+
+```{r}
+# Map
+library(ggplot2)
+map <- rnaturalearth::ne_states("Spain", returnclass = "sf")
+map <- map[-which(map$region == "Canary Is."), ] # delete region
+ggplot(map) + geom_sf()
+```
+
+We obtain the spatial extent of the map with terra:ext(). Then, we can use crop() to remove the part of the raster that is outside the spatial extent.
+
+```{r}
+# Cropping
+sextent <- terra::ext(map)
+r <- terra::crop(r, sextent)
+plot(r)
+```
+
+We can use the mask() function to convert all values outside the map to NA.
+
+```{r}
+# Masking
+r <- terra::mask(r, vect(map))
+plot(r)
+```
+
+The `aggregate()` function in **terra** can be used to group raster cells and create a new raster with lower resolution (i.e., larger cells).
+
+```{r}
+# Aggregating
+r <- terra::aggregate(r, fact = 20, fun = "mean", na.rm = TRUE)
+plot(r)
+```
+
+##  4.4 Extracting raster values at points
+
+```{r}
+library(terra)
+# Raster (SpatRaster)
+r <- rast(system.file("ex/elev.tif", package = "terra"))
+# Polygons (SpatVector)
+v <- vect(system.file("ex/lux.shp", package = "terra"))
+```
+
+We use the terra functions `centroids()` to get the centroids of the division polygons, and `crds()` to obtain their coordinates.
+
+```{r}
+points <- crds(centroids(v))
+```
+
+```{r}
+plot(r)
+plot(v, add = TRUE)
+points(points)
+```
+
+Elevation raster, and division and centroids of polygons in Luxembourg.
+
+We can obtain raster values at points using `extract()`, with the first argument as the `SpatRaster` object and the second argument as the data frame containing the points.
+
+```{r}
+# data frame with the coordinates
+points <- as.data.frame(points)
+valuesatpoints <- extract(r, points)
+cbind(points, valuesatpoints)
+```
+
+## 4.5 Extracting and averaging raster values within polygons
+
+We can also use `extract()` to obtain raster values from `SpatRaster` objects within polygons of class `SpatVector`.
+
+```{r}
+# Extracted raster cells within each polygon
+head(extract(r, v, na.rm = TRUE))
+```
+
+```{r}
+# Extracted raster cells and percentage of area covered within each polygon
+head(extract(r, v, na.rm = TRUE, weights = TRUE))
+```
+
+```{r}
+# Average raster values by polygon
+v$avg <- extract(r, v, mean, na.rm = TRUE)$elevation
+
+# Area-weighted average raster values by polygon (weights = TRUE)
+v$weightedavg <- extract(r, v, mean, na.rm = TRUE, weights = TRUE)$elevation
+```
+
+```{r}
+library(ggplot2)
+library(tidyterra)
+
+# Plot average raster values within polygons
+ggplot(data = v) + geom_spatvector(aes(fill = avg)) + scale_fill_terrain_c()
+
+# Plot area-weighted average raster values within polygons
+ggplot(data = v) + geom_spatvector(aes(fill = weightedavg)) + scale_fill_terrain_c()
+```
+
+Average and area-weighted average of elevation values in each of the divisions of Luxembourg.
+
+# 5 Making maps with R 
+
+Maps allow us to effectively communicate spatial information. Here, we demonstrate how to create both static and interactive maps using several mapping packages, including **ggplot2** (Wickham et al., 2022a), **leaflet** (Cheng et al., 2022a), **mapview** (Appelhans et al., 2022), and **tmap** (Tennekes, 2022).
+
+```{r}
+library(sf)
+nameshp <- system.file("shape/nc.shp", package = "sf")
+d <- st_read(nameshp, quiet = TRUE)
+d$vble <- d$SID74
+d$vble2 <- d$SID79
+```
+
+## 5.1 ggplot2
+
+```{r}
+library(ggplot2)
+library(viridis)
+ggplot(d) + geom_sf(aes(fill = vble)) +
+  scale_fill_viridis() + theme_bw()
+```
+
+Alternatively, we can specify a device driver (e.g., `png`, `pdf`), print the plot, and then close the device using `dev.off()`.
+
+```{r}
+#png("plot.png")
+#ggplot(d) + geom_sf(aes(fill = vble)) + scale_fill_viridis() + theme_bw()
+#dev.off()
+```
+
+## 5.2 leaflet
+
+```{r}
+library(plotly)
+g <- ggplot(d) + geom_sf(aes(fill = vble))
+ggplotly(g)
+```
+
+The `sf` object passed to `leaflet()` must have a geographic coordinate reference system (CRS) using latitude and longitude (EPSG:4326). Here, we use the `st_transform()` function from **sf** to convert the data `d`, which has CRS EPSG:4267, to CRS EPSG:4326.
+
+```{r}
+st_crs(d)$epsg
+```
+
+```{r}
+d <- st_transform(d, 4326)
+```
+
+```{r}
+library(leaflet)
+pal <- colorNumeric(palette = "YlOrRd", domain = d$vble)
+l <- leaflet(d) %>% addTiles() %>%
+  addPolygons(color = "white", fillColor = ~ pal(vble),
+              fillOpacity = 0.8) %>%
+  addLegend(pal = pal, values = ~vble, opacity = 0.8)
+l
+```
+
+We can also use the `addMiniMap()` function to include an inset map.
+
+```{r}
+l %>% addMiniMap()
+```
+
+For example, to save the leaflet map l as .png we can proceed as follows:
+
+```{r}
+# webshot::install_phantomjs()
+# Saves map.html
+# library(htmlwidgets)
+# saveWidget(widget = l, file = "map.html")
+# Takes a screenshot of the map.html created and saves it as map.png
+# library(webshot)
+# webshot::install_phantomjs()
+# webshot(url = "map.html", file = "map.png")
+```
+
+## 5.2 mapview
+
+```{r}
+library(mapview)
+mapview(d, zcol = "vble")
+```
+
+Maps created with mapview can also be customized to include elements such as legends and background maps.
+
+```{r}
+library(RColorBrewer)
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+mapview(d, zcol = "vble", map.types = "CartoDB.DarkMatter",
+        col.regions = pal, layer.name = "SDI")
+```
+
+An inset map can also be added by using the addMiniMap() function of leaflet.
+
+```{r}
+map1 <- mapview(d, zcol = "vble")
+leaflet::addMiniMap(map1@map)
+```
+
+##  5.4 Side-by-side plots with mapview
+
+```{r}
+library(leaflet.extras2)
+library(RColorBrewer)
+
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+
+# common legend
+at <- seq(min(c(d$vble, d$vble2)), max(c(d$vble, d$vble2)), length.out = 8)
+m1 <- mapview(d, zcol = "vble", map.types = "CartoDB.Positron",
+              col.regions = pal, at = at)
+m2 <- mapview(d, zcol = "vble2", map.types = "CartoDB.Positron",
+              col.regions = pal, at = at)
+m1 | m2
+```
+
+##  5.5 Synchronized maps with leaf sync
+
+```{r}
+library(RColorBrewer)
+
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+
+# common legend
+at <- seq(min(c(d$vble, d$vble2)), max(c(d$vble, d$vble2)), length.out = 8)
+
+m1 <- mapview(d, zcol = "vble", map.types = "CartoDB.Positron", col.regions = pal, at = at)
+m2 <- mapview(d, zcol = "vble2", map.types = "CartoDB.Positron", col.regions = pal, at = at)
+
+m <- leafsync::sync(m1, m2)
+m
+```
+
+## 5.6 tmap
+
+The **tmap** package (Tennekes, 2022) allows us to create static and interactive maps composed of multiple shapes and layers, with various styles.
+
+```{r}
+library(tmap)
+tmap_mode("plot")
+tm_shape(d) + tm_polygons("vble")
+```
+
+## 5.7 Maps of point data
+
+```{r}
+library(maps)
+d <- world.cities
+# Select South Africa
+d <- d[which(d$country.etc == "South Africa"), ]
+# Transform data to sf object
+d <- st_as_sf(d, coords = c("long", "lat"))
+# Assign CRS
+st_crs(d) <- 4326
+```
+
+```{r}
+d$vble <- d$pop
+d$size <- sqrt(d$vble)/100
+
+ggplot(d) + geom_sf(aes(col = vble, size = size)) +
+  scale_color_viridis()
+```
+
+A leaflet map can be created using addCircles() specifying the radius and color of the points.
+
+```{r}
+pal <- colorNumeric(palette = "viridis", domain = d$vble)
+
+leaflet(d) %>%
+  addTiles() %>%
+  addCircles(
+    lng = st_coordinates(d)[, 1],
+    lat = st_coordinates(d)[, 2],
+    radius = ~sqrt(vble) * 10,
+    color = ~pal(vble),
+    popup = ~name
+  ) %>%
+  addLegend(
+    pal = pal,
+    values = ~vble,
+    position = "bottomright"
+  )
+```
+
+To create a map with mapview, we set the size of the points with cex = "size".
+
+```{r}
+d$size <- sqrt(d$vble)
+mapview(d, zcol = "vble", cex = "size")
+```
+
+Finally, we use tm_dots() to create a map with tmap.
+
+```{r}
+tmap_mode("view")
+tm_shape(d) + tm_dots("vble", scale = sqrt(d$vble)/500, palette = "viridis")
+```
+
+##  5.8 Maps of raster data
+
+```{r}
+library(terra)
+filename <- system.file("ex/elev.tif", package = "terra")
+r <- rast(filename)
+
+# Transform data to sf object
+d <- st_as_sf(as.data.frame(r, xy = TRUE), coords = c("x", "y"))
+# Assign CRS
+st_crs(d) <- 4326
+# Plot
+ggplot(d) + geom_sf() +
+  geom_raster(data = as.data.frame(r, xy = TRUE),
+              aes(x = x, y = y, fill = elevation))
+```
+
+To use the leaflet and mapview packages, we transform the data from class terra to RasterLayer with the raster::brick() function.
+
+```{r}
+library(raster)
+
+rb <- raster::brick(r)
+pal <- colorNumeric("YlOrRd", values(r), na.color = "transparent")
+
+leaflet() %>%
+  addTiles() %>%
+  addRasterImage(rb, colors = pal, opacity = 0.8) %>%
+  addLegend(
+    pal = pal,
+    values = values(r),
+    title = "Elevation"
+  )
+```
+
+We create a map with mapview setting the title with the argument layer as follows:
+
+```{r}
+mapview(rb, layer = "elevation")
+```
+
+We create a map with tmap by using tm_raster().
+
+```{r}
+tm_shape(r) + tm_raster(title = "elevation", palette = "YlOrRd")
+```
+
+## 5.9 Mobility flows with flowmapblue
+
+```{r}
+#devtools::install_github("FlowmapBlue/flowmapblue.R")
+library(flowmapblue)
+
+locations <- data.frame(
+ id = c(1, 2, 3),
+ name = c("New York", "London", "Rio de Janeiro"),
+ lat = c(40.713543, 51.507425,-22.906241),
+ lon = c(-74.011219,-0.127738,-43.180244)
+)
+```
+
+The data frame flows has the number of people moving between origin and destination locations.
+
+```{r}
+flows <- data.frame(
+  origin = c(1, 2, 3, 2, 1, 3),
+  dest = c(2, 1, 1, 3, 3, 2),
+  count = c(42, 51, 50, 40, 22, 42)
+)
+```
+
+Finally, we call the `flowmapblue()` function, passing the `locations` and `flows` data frames, along with the Mapbox access token, and specifying options such as clustering and animation. If `mapboxAccessToken` is set to `NULL`, the flows between locations will still be visualized, but without a background map.
+
+```{r}
+#flowmapblue(locations, flows, mapboxAccessToken = NULL, clustering = TRUE, darkMode = TRUE, animation = FALSE)
+```
+
+# 6 R packages to download open spatial data
+
+## 6.1 Administrative boundaries of countries
+
+```{r}
+# devtools::install_github("ropensci/rnaturalearthhires")
+library(rnaturalearth)
+library(sf)
+library(ggplot2)
+library(viridis)
+library(patchwork)
+
+map1 <- ne_countries(type = "countries", country = "Germany", scale = "medium", returnclass = "sf")
+map2 <- rnaturalearth::ne_states("Germany", returnclass = "sf")
+p1 <- ggplot(map1) + geom_sf()
+p2 <- ggplot(map2) + geom_sf()
+p1 + p2
+```
+
+## 6.2 Climatic data
+
+```{r}
+library(geodata)
+
+d <- worldclim_country(country = "Jamaica", var = "tmin", path = tempdir())
+terra::plot(mean(d), plg = list(title = "Min. temperature (C)"))
+```
+
+##  6.3 Precipitation
+
+```{r}
+library("chirps")
+
+location <- data.frame(long = 100.523186, lat = 13.736717)
+d <- get_chirps(location, dates = c("2020-01-01", "2022-12-31"), server = "ClimateSERV")
+ggplot(d, aes(x = date, y = chirps)) + geom_line() +
+  labs(y = "Precipitation (mm)")
+```
+
+## 6.4 Elevation
+
+```{r}
+library(rnaturalearth)
+library(elevatr)
+library(terra)
+
+map <- ne_countries(type = "countries", country = "Switzerland", scale = "medium", returnclass = "sf")
+d <- get_elev_raster(locations = map, z = 9, clip = "locations")
+terra::plot(rast(d), plg = list(title = "Elevation (m)"))
+```
+
+## 6.5 OpenStreetMap data
+
+```{r}
+library(osmdata)
+head(available_features())
+```
+
+```{r}
+head(available_tags("amenity"))
+```
+
+```{r}
+placebb <- getbb("Barcelona")
+placebb
+```
+
+For example, we can obtain the hospitals in Barcelona by specifying its bounding box `placebb` and using `add_osm_feature()` with `key = "amenity"` and `value = "hospital"` as follows.
+
+```{r}
+hospitals <- placebb %>% opq() %>%
+  add_osm_feature(key = "amenity", value = "hospital") %>%
+  osmdata_sf()
+```
+
+Motorways can be retrieved using `key = "highway"` and `value = "motorway"`.
+
+```{r}
+motorways <- placebb %>% opq() %>%
+  add_osm_feature(key = "highway", value = "motorway") %>%
+  osmdata_sf()
+```
+
+```{r}
+library(leaflet)
+leaflet() %>% addTiles() %>%
+  addPolylines(data = motorways$osm_lines, color = "black") %>%
+  addPolygons(data = hospitals$osm_polygons,
+              label = hospitals$osm_polygons$name)
+```
+
+## 6.6 World Bank data
+
+```{r}
+library(wbstats)
+indicators <- wb_search(pattern = "poverty|unemployment")
+# print(indicators)
+```
+
+```{r}
+d <- wb_data(indicator = "MO.INDEX.HDEV.XQ", start_date = 2011, end_date = 2011)
+print(head(d))
+```
+
+```{r}
+library(rnaturalearth)
+library(mapview)
+map <- ne_countries(continent = "Africa", returnclass = "sf")
+map <- dplyr::left_join(map, d, by = c("iso_a3" = "iso3c"))
+mapview(map, zcol = "MO.INDEX.HDEV.XQ")
+```
+
+##  6.7 Species occurrence
+
+```{r}
+library('spocc')
+df <- occ(query = "Bradypus variegatus", from = "gbif",
+          date = c("2000-01-01", "2019-12-31"),
+          gbifopts = list(country = "CR"),
+          has_coords = TRUE, limit = 1000)
+d <- occ2df(df)
+```
+
+```{r}
+library(sf)
+d <- st_as_sf(d, coords = c("longitude", "latitude"))
+st_crs(d) <- 4326
+mapview(d)
+```
