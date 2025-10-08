@@ -1,7 +1,3 @@
-Bagus banget tampilannya! 😍 Sekarang biar README-mu lengkap dan membantu pengunjung repo **langsung tahu cara melihat HTML-nya**, kamu bisa tambahkan satu bagian terakhir seperti ini ⬇️
-
----
-
 # 📘 Spatial Statistics for Data Science — R Code Companion
 
 This repository contains a collection of **R syntax and examples** adapted from the book *"Spatial Statistics for Data Science"* by **Paula Moraga**.
