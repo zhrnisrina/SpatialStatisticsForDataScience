@@ -1,0 +1,884 @@
+---
+title: "Part II: Areal Data"
+author: "Putri Nisrina"
+format:
+  html:
+    theme: minty
+    toc: true
+    toc-location: left
+    smooth-scroll: true
+    code-copy: true
+---
+
+# 7 Spatial neighborhood matrices
+
+Areal or lattice data arise when a study region is divided into a finite number of areas where outcomes are aggregated. Examples include the number of individuals with a certain disease in municipalities of a country, the number of road accidents in provinces, or the average housing prices in districts of a city.
+
+```{r}
+library(spData)
+library(sf)
+library(spdep)
+library(ggplot2)
+map <- st_read(system.file("shapes/columbus.gpkg",
+                           package = "spData"), quiet = TRUE)
+st_crs(map) <- NA
+```
+
+## 7.1 Neighbors based on contiguity
+
+Neighbors based on contiguity are constructed by assuming that neighbors of a given area are other areas that share a common boundary.
+
+![](images/clipboard-2523019155.png)
+
+Here, we use poly2nb() to calculate the neighbors of each region in Columbus based on Queen contiguity.
+
+```{r}
+library(spdep)
+nb <- spdep::poly2nb(map, queen = TRUE)
+head(nb)
+```
+
+```{r}
+plot(st_geometry(map), border = "lightgray")
+plot.nb(nb, st_geometry(map), add = TRUE)
+```
+
+Map of neighbors based on contiguity.
+
+We can plot the neighbors of a given area by adding a new column in map representing the neighbors of the area.
+
+```{r}
+id <- 20 # area id
+map$neighbors <- "other"
+map$neighbors[id] <- "area"
+map$neighbors[nb[[id]]] <- "neighbors"
+ggplot(map) + geom_sf(aes(fill = neighbors)) +
+  theme_bw() + scale_fill_manual(values = c("gray30", "gray", "white"))
+```
+
+Map of neighbors of area 20 based on contiguity.
+
+## 7.2 Neighbors based on k nearest neighbors
+
+We can also consider as neighbors of an area its k nearest neighbors based on the distance separating them.
+
+![Neighbors based on 3 nearest neighbors.](images/clipboard-1187507137.png)
+
+```{r}
+# Neighbors based on 3 nearest neighbors
+coo <- st_centroid(map)
+nb <- knn2nb(knearneigh(coo, k=3)) # k number nearest neighbors
+plot(st_geometry(map), border = "lightgray")
+plot.nb(nb, st_geometry(map), add = TRUE)
+```
+
+Map of neighbors based on 3 nearest neighbors
+
+## 7.3 Neighbors based on distance
+
+Neigborhood structures can also be defined by considering neighbors areas that are within a given distance.
+
+![Neighbors based on distance. The area of interest is shown in black, and its neighbors are shown in gray. The circle's center represents the centroid of the area of interest, and the circle's radius represents the distance.](images/clipboard-1557407997.png)
+
+```{r}
+# Neighbors based on distance
+nb <- dnearneigh(x= st_centroid(map), d1 = 0, d2 = 0.4)
+plot(st_geometry(map), border = "lightgray")
+plot.nb(nb, st_geometry(map), add = TRUE)
+```
+
+Map of neighbors separated by a distance less than 0.4.
+
+Note that we can also determine an appropriate upper distance to ensure that each area has at least k neighbors. This helps in setting a suitable upper distance bound for a preferred number of neighbors k.
+
+```{r}
+coo <- st_centroid(map)
+# k is the number nearest neighbors
+nb1 <- knn2nb(knearneigh(coo, k=1))
+```
+
+```{r}
+dist1 <- nbdists(nb1, coo)
+summary(unlist(dist1))
+```
+
+The maximum distance is 0.62 and we can take this value as an upper bound of the distance to ensure each area has at least one neighbor.
+
+## 7.4 Neighbors of order k based on contiguity
+
+![Rook and Queen neighbors of first (dark gray) and second (light gray) order.](images/clipboard-427070346.png)
+
+```{r}
+library(spdep)
+nb <- poly2nb(map, queen = TRUE)
+nblags <- spdep::nblag(neighbours = nb, maxlag = 2)
+```
+
+```{r}
+# Neighbors of first order
+plot(st_geometry(map), border = "lightgray")
+plot.nb(nblags[[1]], st_geometry(map), add = TRUE)
+```
+
+Neighbors of first order.
+
+```{r}
+# Neighbors of second order
+plot(st_geometry(map), border = "lightgray")
+plot.nb(nblags[[2]], st_geometry(map), add = TRUE)
+```
+
+Neighbors of second order.
+
+```{r}
+# Neighbors of order 1 until order 2
+nb <- spdep::poly2nb(map, queen = TRUE)
+nblagsc <- spdep::nblag_cumul(nblags)
+plot(st_geometry(map), border = "lightgray")
+plot.nb(nblagsc, st_geometry(map), add = TRUE)
+```
+
+Neighbors of first order until second order.
+
+## 7.5 Neighborhood matrices
+
+A spatial neighborhood matrix (W) defines the neighborhood structure across the entire study region, where its elements represent spatial weights. The (i, j)-th element of W, denoted as w??????, expresses the spatial connection between areas i and j. Areas that are closer to i are assigned higher weights than those that are farther away.
+
+![Left: Areas of the study region. Right: Spatial weight matrix calculated by assuming neighboring areas share a common boundary, and sum of weights for each area.](images/clipboard-1130983104.png)
+
+*Spatial weights matrix based on a binary neighbor list*
+
+```{r}
+nb <- poly2nb(map, queen = TRUE)
+nbw <- spdep::nb2listw(nb, style = "W")
+nbw$weights[1:3]
+```
+
+```{r}
+m1 <- listw2mat(nbw)
+lattice::levelplot(
+  t(m1),
+  scales = list(
+    y = list(
+      at = c(10, 20, 30, 40),
+      labels = c(10, 20, 30, 40)
+    )
+  )
+)
+```
+
+Spatial weights matrix based on a binary neighbor list
+
+*Spatial weights matrix based on inverse distance values*
+
+```{r}
+coo <- st_centroid(map)
+nb <- poly2nb(map, queen = TRUE)
+dists <- nbdists(nb, coo)
+ids <- lapply(dists, function(x){1/x})
+```
+
+```{r}
+nbw <- nb2listw(nb, glist = ids, style = "B")
+nbw$weights[1:3]
+```
+
+```{r}
+m2 <- listw2mat(nbw)
+lattice::levelplot(
+  t(m2),
+  scales = list(
+    y = list(
+      at = c(10, 20, 30, 40),
+      labels = c(10, 20, 30, 40)
+    )
+  )
+)
+```
+
+Spatial weights matrix based on inverse distance values
+
+# 8 Spatial autocorrelation
+
+Spatial autocorrelation describes the extent to which a variable is correlated with itself across space. This concept is closely related to Tobler's First Law of Geography, which states that "everything is related to everything else, but near things are more related than distant things."
+
+![Examples of configurations of areas showing different types of spatial autocorrelation.](images/clipboard-2585511430.png)
+
+```{r}
+library(spData)
+library(sf)
+library(mapview)
+map <- st_read(system.file("shapes/boston_tracts.gpkg", package = "spData"), quiet = TRUE)
+map$vble <- map$MEDV
+mapview(map, zcol = "vble")
+```
+
+Median prices of owner-occupied housing in \$1000 USD in census tracts of Boston in 1978.
+
+## 8.1 Global Moran's I
+
+![](images/clipboard-108595169.png)
+
+where n is the number of regions, Y??? is the observed value of the variable of interest in region *i*, and ?? is the mean of all values. w?????? are the spatial weights that represent the spatial proximity between regions *i* and *j*, with w?????? = 0 and *i, j = 1, ., n*.
+
+When the number of regions is sufficiently large, I follows a normal distribution. We can then assess whether a given spatial pattern significantly deviates from a random pattern by comparing its z-score.
+
+## 8.2 The moran.test() function
+
+```{r}
+# Neighbors
+library(spdep)
+nb <- poly2nb(map, queen = TRUE) # queen shares point or border
+nbw <- nb2listw(nb, style = "W")
+# Global Moran's I
+gmoran <- moran.test(map$vble, nbw,
+alternative = "greater")
+gmoran
+```
+
+```{r}
+gmoran[["estimate"]][["Moran I statistic"]] # Moran's I
+```
+
+```{r}
+gmoran[["statistic"]] # z-score
+```
+
+```{r}
+gmoran[["p.value"]] # p-value
+```
+
+We observe the p-value obtained is lower than the significance level 0.05. Then, we reject the null hypothesis and conclude there is evidence for positive spatial autocorrelation.
+
+The same conclusion is obtained if we use a Monte Carlo approach to assess significance.
+
+```{r}
+gmoranMC <- moran.mc(map$vble, nbw, nsim = 999)
+gmoranMC
+```
+
+```{r}
+hist(gmoranMC$res)
+abline(v=gmoranMC$statistic, col = "red")
+```
+
+Histogram of the Moran's I values for each of the simulated patterns in the Monte Carlo randomization approach. The red line represents the Moran's I obtained for the real data.
+
+## 8.3 Moran's I scatterplot
+
+This plot displays the observations of each area against its spatially lagged values. The spatially lagged value for a given area is calculated as a weighted average of the neighboring values for that area.
+
+```{r}
+moran.plot(map$vble, nbw)
+```
+
+Moran's I scatterplot showing the observations plotted against their spatially lagged values.
+
+## 8.4 Local Moran's I
+
+There is often interest in providing a local measure of similarity between each area's value and those of its nearby areas. Local Indicators of Spatial Association (LISA) are designed to indicate the extent of significant spatial clustering of similar values around each observation. A desirable property of LISA is that the sum of all local indicators across regions equals a multiple of the global spatial association indicator.
+
+![](images/clipboard-1083912652.png)
+
+Typically, the values of the LISAs are mapped to show the locations of areas with comparatively high or low local association with their neighboring areas.
+
+## 8.5 The localmoran() function
+
+Here, we use the `localmoran()` function to compute the Local Moran's I for the housing prices data. We set `alternative = "greater"`, which corresponds to testing H0: no or negative spatial autocorrelation vs. H1: positive spatial autocorrelation.
+
+```{r}
+lmoran <- localmoran(map$vble, nbw, alternative = "greater")
+head(lmoran)
+```
+
+```{r}
+library(tmap)
+tmap_mode("plot")
+```
+
+```{r}
+map$lmI <- lmoran[, "Ii"]        # Local Moran's I
+map$lmZ <- lmoran[, "Z.Ii"]      # z-scores
+map$lmp <- lmoran[, "Pr(z > E(Ii))"]  # p-values (alternative = "greater")
+
+p1 <- tm_shape(map) +
+  tm_polygons(col = "vble", title = "vble", style = "quantile") +
+  tm_layout(legend.outside = TRUE)
+
+p2 <- tm_shape(map) +
+  tm_polygons(col = "lmI", title = "Local Moran's I", style = "quantile") +
+  tm_layout(legend.outside = TRUE)
+
+p3 <- tm_shape(map) +
+  tm_polygons(col = "lmZ", title = "Z-score", breaks = c(-Inf, 1.65, Inf)) +
+  tm_layout(legend.outside = TRUE)
+
+p4 <- tm_shape(map) +
+  tm_polygons(col = "lmp", title = "p-value", breaks = c(-Inf, 0.05, Inf)) +
+  tm_layout(legend.outside = TRUE)
+
+tmap_arrange(p1, p2, p3, p4)
+```
+
+Boston housing prices, Local Moran's I, z-scores, and p-values.
+
+```{r}
+tm_shape(map) +
+  tm_polygons(
+    col = "lmZ",
+    title = "Local Moran's I",
+    style = "fixed",
+    breaks = c(-Inf, -1.96, 1.96, Inf),
+    labels = c("Negative SAC", "No SAC", "Positive SAC"),
+    palette = c("blue", "white", "red")
+  ) +
+  tm_layout(legend.outside = TRUE)
+```
+
+Boston areas showing negative, no, and positive spatial auto correlation according to the local Moran's I.
+
+# 8.6 Clusters
+
+Local Moran's I allows us to identify the following types of clusters: - High-High: areas with high values surrounded by neighbors with high values. - High-Low: areas with high values surrounded by neighbors with low values. - Low-High: areas with low values surrounded by neighbors with high values. - Low-Low: areas with low values surrounded by neighbors with low values.
+
+```{r}
+lmoran <- localmoran(map$vble, nbw, alternative = "two.sided")
+head(lmoran)
+```
+
+```{r}
+map$lmp <- lmoran[,5] #p-values are in column 5
+mp <- moran.plot(as.vector(scale(map$vble)), nbw)
+```
+
+Moran's I scatterplot showing the scaled values plotted against their spatially lagged values.
+
+```{r}
+head(mp)
+```
+
+We create a variable called quadrant to denote the type of cluster for each area, based on its value, its spatially lagged value, and the corresponding p-value. Specifically: - Areas with quadrant = 1 correspond to High-High clusters. - Areas with quadrant = 2 correspond to Low-Low clusters. - Areas with quadrant = 3 correspond to High-Low clusters. - Areas with quadrant = 4 correspond to Low-High clusters. - Areas with quadrant = 5 are non-significant.
+
+```{r}
+map$quadrant <- NA
+
+# High-High
+map[(mp$x >= 0 & mp$wx >= 0) & (map$lmp <= 0.05), "quadrant"] <- 1
+
+# Low-Low
+map[(mp$x <= 0 & mp$wx <= 0) & (map$lmp <= 0.05), "quadrant"] <- 2
+
+# High-Low
+map[(mp$x >= 0 & mp$wx <= 0) & (map$lmp <= 0.05), "quadrant"] <- 3
+
+# Low-High
+map[(mp$x <= 0 & mp$wx >= 0) & (map$lmp <= 0.05), "quadrant"] <- 4
+
+# Non-significant
+map[(map$lmp > 0.05), "quadrant"] <- 5
+```
+
+```{r}
+tm_shape(map) +
+  tm_fill(
+    col = "quadrant",
+    title = "",
+    breaks = c(1, 2, 3, 4, 5, 6),
+    palette = c("red", "blue", "lightpink", "skyblue2", "white"),
+    labels = c("High-High", "Low-Low", "High-Low",
+               "Low-High", "Non-significant")
+  ) +
+  tm_legend(text.size = 1) +
+  tm_borders(alpha = 0.5) +
+  tm_layout(frame = FALSE, title = "Clusters") +
+  tm_layout(legend.outside = TRUE)
+```
+
+High-high, low-low, high-low, and low-high clusters detected in the Boston housing prices data
+
+# 9 Bayesian spatial models
+
+Bayesian hierarchical models (Banerjee et al., 2004) can be used to analyze areal data that arise when an outcome variable is aggregated into areas that form a partition of the study region.
+
+A commonly used spatial model is the Besag-York-Mollié (BYM) model.
+
+![](images/clipboard-1784890060.png)
+
+The model includes a spatial random effect (u???) that accounts for the spatial dependence between outcomes, indicating that areas located close to each other may have similar values. An additional unstructured exchangeable component (v???) is included to model uncorrelated random noise.
+
+## 9.1 Bayesian inference with INLA
+
+Bayesian hierarchical models can be fitted using methods such as Integrated Nested Laplace Approximation (INLA) and Markov Chain Monte Carlo (MCMC). INLA provides a fast, approximate Bayesian inference approach for latent Gaussian models, including generalized linear mixed models and spatial or spatio-temporal models.
+
+```{r}
+# Run R As Administrator
+#install.packages("INLA",
+#                 repos = c("https://cloud.r-project.org",
+#                           INLA = "https://inla.r-inla-download.org/R/stable"),
+#                 type = "binary")
+```
+
+## 9.2 Spatial modeling of housing prices
+
+```{r}
+library(sf)
+library(spData)
+map <- st_read(system.file("shapes/boston_tracts.GPKG",
+                           package = "spData"), quiet = TRUE)
+```
+
+```{r}
+library(mapview)
+map$vble <- log(map$MEDV)
+mapview(map, zcol = "vble")
+```
+
+Logarithm of housing prices in Boston per census tract from the spData package.
+
+```{r}
+library(GGally)
+ggpairs(data = map, columns = c("vble", "CRIM", "RM"))
+```
+
+The relationship between the outcome variable - the logarithm of housing price (VBLE) - and the covariates per capita crime rate (CRIM) and number of rooms (RM).
+
+```{r}
+library(spdep)
+library(INLA)
+nb <-poly2nb(map)
+head(nb)
+```
+
+```{r}
+nb2INLA("map.adj", nb)
+g <- inla.read.graph(filename = "map.adj")
+```
+
+```{r}
+map$re_u <- 1:nrow(map)
+map$re_v <- 1:nrow(map)
+```
+
+```{r}
+formula <- vble ~ CRIM + RM +
+  f(re_u, model = "besag", graph = g, scale.model = TRUE) +
+  f(re_v, model = "iid")
+```
+
+```{r}
+formula <- vble ~ CRIM + RM + f(re_u, model = "bym2", graph = g)
+```
+
+```{r}
+res <- inla(formula, family = "gaussian", data = map,
+            control.predictor = list(compute = TRUE),
+            control.compute = list(return.marginals.predictor = TRUE))
+```
+
+```{r}
+res$summary.fixed
+```
+
+We observe an intercept of ??0??? = 1.427 with a 95% credible interval of (1.253, 1.600). The coefficient for crime (CRIM) is ??1 = -0.008 with a 95% credible interval of (-0.010, -0.005), indicating that crime is significantly and negatively associated with housing prices. Meanwhile, the coefficient for number of rooms (RM) is ??2 = 0.260 with a 95% credible interval of (0.233, 0.288), suggesting that the number of rooms is significantly and positively associated with housing prices. Overall, these results imply that both crime rate and number of rooms play important roles in explaining the spatial variation of housing prices.
+
+```{r}
+summary(res$summary.fitted.values)
+```
+
+We can create variables with the posterior mean (PM) and lower (LL) and upper (UL) limits of 95% credible intervals.
+
+```{r}
+# Posterior mean and 95% CI
+map$PM <- res$summary.fitted.values[, "mean"]
+map$LL <- res$summary.fitted.values[, "0.025quant"]
+map$UL <- res$summary.fitted.values[, "0.975quant"]
+```
+
+```{r}
+# Common legend
+at <- seq(
+  min(c(map$PM, map$LL, map$UL)),
+  max(c(map$PM, map$LL, map$UL)),
+  length.out = 8
+)
+
+# Popup table
+popuptable <- leafpop::popupTable(
+  dplyr::mutate_if(map, is.numeric, round, digits = 2),
+  zcol = c("TOWN", "vble", "CRIM", "RM", "PM", "LL", "UL"),
+  row.numbers = FALSE,
+  feature.id = FALSE
+)
+
+# Map visualizations
+m1 <- mapview(
+  map,
+  zcol = "PM",
+  map.types = "CartoDB.Positron",
+  at = at,
+  popup = popuptable
+)
+
+m2 <- mapview(
+  map,
+  zcol = "LL",
+  map.types = "CartoDB.Positron",
+  at = at,
+  popup = popuptable
+)
+
+m3 <- mapview(
+  map,
+  zcol = "UL",
+  map.types = "CartoDB.Positron",
+  at = at,
+  popup = popuptable
+)
+```
+
+```{r}
+library(leafsync)
+m <- leafsync::sync(m1,m2,m3,ncol=3)
+m
+```
+
+Posterior mean of the logarithm of housing prices (left), along with the lower (center) and upper (right) limits of the 95% credible intervals.
+
+```{r}
+# Transformation of the marginals using inla.tmarginal()
+# Example: transformation for the first area
+# inla.tmarginal(function(x) exp(x), res$marginals.fitted.values[[1]])
+
+# Transform all marginals
+marginals <- lapply(
+  res$marginals.fitted.values,
+  FUN = function(marg) {
+    inla.tmarginal(function(x) exp(x), marg)
+  }
+)
+
+# Obtain summaries of the transformed marginals using inla.zmarginal()
+marginals_summaries <- lapply(
+  marginals,
+  FUN = function(marg) {
+    inla.zmarginal(marg)
+  }
+)
+
+# Posterior mean and 95% credible interval
+map$PMoriginal <- sapply(marginals_summaries, '[[', "mean")
+map$LLoriginal <- sapply(marginals_summaries, '[[', "quant0.025")
+map$ULoriginal <- sapply(marginals_summaries, '[[', "quant0.975")
+```
+
+```{r}
+# Common legend
+at <- seq(
+  min(c(map$PMoriginal, map$LLoriginal, map$ULoriginal)),
+  max(c(map$PMoriginal, map$LLoriginal, map$ULoriginal)),
+  length.out = 8
+)
+
+# Popup table
+popuptable <- leafpop::popupTable(
+  dplyr::mutate_if(map, is.numeric, round, digits = 2),
+  zcol = c("TOWN", "vble", "CRIM", "RM", "PM", "LL", "UL"),
+  row.numbers = FALSE,
+  feature.id = FALSE
+)
+
+# Map visualizations
+m1 <- mapview(
+  map,
+  zcol = "PMoriginal",
+  map.types = "CartoDB.Positron",
+  at = at,
+  popup = popuptable
+)
+
+m2 <- mapview(
+  map,
+  zcol = "LLoriginal",
+  map.types = "CartoDB.Positron",
+  at = at,
+  popup = popuptable
+)
+
+m3 <- mapview(
+  map,
+  zcol = "ULoriginal",
+  map.types = "CartoDB.Positron",
+  at = at,
+  popup = popuptable
+)
+```
+
+```{r}
+m <- leafsync::sync(m1, m2, m3, ncol = 3)
+m
+```
+
+Posterior mean of the housing prices (left), together with lower (center) and upper (right) limits of 95% credible intervals.
+
+# 10 Disease risk modeling
+
+# 10.1 Spatial disease risk models
+
+Spatial disease risk models are commonly specified using a Poisson distribution for the observed number of cases (Yi) with mean equal to the expected number of cases (Ei) times the relative risk (??i) corresponding to area i, i = 1,...,n,
+
+![](images/clipboard-4202218849.png)
+
+# 10.2 Modeling of lung cancer risk in Pennsylvania
+
+```{r}
+library(SpatialEpi)
+data(pennLC)
+class(pennLC)
+```
+
+```{r}
+names(pennLC)
+```
+
+```{r}
+head(pennLC$data)
+```
+
+```{r}
+head(pennLC$smoking)
+```
+
+```{r}
+library(sf)
+
+map <- st_as_sf(pennLC$spatial.polygon)
+
+countynames <- sapply(
+  slot(pennLC$spatial.polygon, "polygons"),
+  function(x) { slot(x, "ID") }
+)
+
+map$county <- countynames
+
+head(map)
+```
+
+*Observed cases*
+
+```{r}
+library(dplyr)
+d <- group_by(pennLC$data, county) %>% summarize(Y= sum(cases))
+head(d)
+```
+
+*Expected cases*
+
+```{r}
+pennLC$data <- pennLC$data[order(pennLC$data$county,
+pennLC$data$race, pennLC$data$gender, pennLC$data$age), ]
+```
+
+```{r}
+E <- expected(population = pennLC$data$population,
+ cases = pennLC$data$cases, n.strata = 16)
+d$E <- E
+head(d)
+```
+
+*Smokers proportions*
+
+```{r}
+d <- dplyr::left_join(d, pennLC$smoking, by = "county")
+```
+
+*Standardized Mortality Ratios*
+
+```{r}
+d$SMR <- d$Y/d$E
+head(d)
+```
+
+```{r}
+map <- dplyr::left_join(map, d, by = "county")
+```
+
+```{r}
+library(mapview)
+library(RColorBrewer)
+
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+
+mapview(
+  map,
+  zcol = "SMR",
+  color = "gray",
+  alpha.regions = 0.8,
+  layer.name = "SMR",
+  col.regions = pal,
+  map.types = "CartoDB.Positron"
+)
+```
+
+Relative risks of the counties of Pennsylvania, USA.
+
+```{r}
+library(mapview)
+library(RColorBrewer)
+library(leafpop)
+
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+mapviewOptions(fgb = FALSE)
+
+popuptable <- leafpop::popupTable(
+  dplyr::mutate_if(map, is.numeric, round, digits = 2),
+  zcol = c("county", "Y", "E", "smoking", "SMR"),
+  row.numbers = FALSE,
+  feature.id = FALSE
+)
+
+mapview(
+  map,
+  zcol = "SMR",
+  color = "gray",
+  col.regions = pal,
+  highlight = leaflet::highlightOptions(weight = 4),
+  popup = popuptable
+)
+```
+
+```{r}
+library(spdep)
+library(INLA)
+nb <- poly2nb(map)
+nb2INLA("map.adj", nb)
+g <- inla.read.graph(filename = "map.adj")
+```
+
+```{r}
+map$re_u <- 1:nrow(map)
+map$re_v <- 1:nrow(map)
+```
+
+```{r}
+formula <- Y ~ smoking + f(re_u, model = "besag", graph = g, scale.model = TRUE) + f(re_v, model = "iid")
+```
+
+```{r}
+res <- inla(formula, family = "poisson", data = map, E= E, control.predictor = list(compute = TRUE), control.compute = list(return.marginals.predictor = TRUE))
+```
+
+```{r}
+res$summary.fixed
+```
+
+We see the intercept ??0 =-0.323 with a 95% credible interval equal to (-0.619,-0.029), and the coefficient of smoking is ??1 = 1.155 with a 95% credible interval equal to (-0.076, 2.378) This indicates a non-significant effect of smoking.
+
+```{r}
+res$summary.fitted.values[1:3,]
+```
+
+```{r}
+# Relative risk
+map$RR <- res$summary.fitted.values[, "mean"]
+
+# Lower and upper limits of 95% credible intervals
+map$LL <- res$summary.fitted.values[, "0.025quant"]
+map$UL <- res$summary.fitted.values[, "0.975quant"]
+```
+
+```{r}
+library(mapview)
+library(RColorBrewer)
+library(leafpop)
+
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+mapviewOptions(fgb = FALSE)
+
+mapview(
+  map,
+  zcol = "RR",
+  color = "gray",
+  col.regions = pal,
+  highlight = leaflet::highlightOptions(weight = 4),
+  popup = leafpop::popupTable(
+    dplyr::mutate_if(map, is.numeric, round, digits = 2),
+    zcol = c("county", "Y", "E", "smoking", "SMR", "RR", "LL", "UL"),
+    row.numbers = FALSE,
+    feature.id = FALSE
+  )
+)
+```
+
+Relative risks of the counties of Pennsylvania, USA.
+
+*Comparing SMR and RR maps*
+
+```{r}
+at <- seq(min(map$SMR), max(map$SMR), length.out = 8)
+
+m1 <- mapview(
+  map,
+  zcol = "SMR",
+  color = "gray",
+  col.regions = pal,
+  at = at
+)
+
+m2 <- mapview(
+  map,
+  zcol = "RR",
+  color = "gray",
+  col.regions = pal,
+  at = at
+)
+
+leafsync::sync(m1, m2)
+```
+
+SMRs (left) and RRs (right) of the counties of Pennsylvania, USA.
+
+*Exceedance probabilities*
+
+```{r}
+c<-1.2
+marg<-res$marginals.fitted.values[[51]]
+1-inla.pmarginal(q = c,marginal= marg)
+```
+
+```{r}
+library(ggplot2)
+
+marginal <- inla.smarginal(res$marginals.fitted.values[[51]])
+marginal <- data.frame(marginal)
+
+ggplot(marginal, aes(x = x, y = y)) +
+  geom_line() +
+  labs(x = expression(theta[51]), y = "Density") +
+  geom_vline(xintercept = 1.2, col = "black") +
+  theme_bw(base_size = 20)
+```
+
+Posterior distribution of the relative risk for area 51 exceeding the threshold value of 1.2. The vertical line indicates the threshold value.
+
+```{r}
+c<-1.2
+map$exc<-sapply(res$marginals.fitted.values,
+FUN= function(marg){1-inla.pmarginal(q=c,marginal= marg)})
+```
+
+```{r}
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+mapview(map, zcol = "exc", color = "gray", col.regions = pal, map.types = "CartoDB.Positron")
+```
+
+Probabilities that the relative risks of counties exceed 1.2.
+
+# 11 Areal data issues
+
+Spatial analyses of aggregated data often face the Misaligned Data Problem (MIDP), which occurs when the scale of the analyzed data differs from the scale at which it was originally collected. This misalignment can result in a loss of spatial detail, potentially obscuring important patterns and leading to biased or misleading conclusions (Banerjee et al., 2004).
+
+Another common issue is the Modifiable Areal Unit Problem (MAUP) (Openshaw, 1984), where results vary depending on the level or configuration of spatial aggregation. The MAUP consists of two effects: the scale effect, where results change with the level of aggregation, and the zoning effect, where arbitrary boundary definitions influence outcomes.
+
+Ecological studies (Robinson, 1950) analyze relationships between exposures and outcomes at the group level rather than the individual level. While useful when individual data are unavailable, they are prone to the ecological fallacy-group-level associations that do not necessarily apply to individuals. This introduces ecological bias, a specific form of MAUP that includes aggregation and specification biases (Gotway & Young, 2002).
+
+Finally, integrating spatial data from different sources or resolutions-such as monitoring stations and satellite imagery-can improve prediction accuracy. Moraga et al. (2017) proposed a Bayesian melding model combining spatially misaligned data using INLA and SPDE for efficient inference. Zhong and Moraga (2023) compared this model with a Bayesian downscaler, demonstrating its ability to disaggregate areal data and produce spatially continuous predictions that enhance policy-relevant decision-making.
