@@ -20,18 +20,23 @@ Moraga, Paula. *Spatial Statistics for Data Science: Theory and Practice with R*
 * All examples are based on the author’s original materials but rewritten and organized for learning purposes.
 
 ---
+## 🌐 How to View the HTML Files
 
-## 🌐 How to View the HTML File
-
-1. Click the green **Code → Download ZIP** button on this repository.
-2. Extract the ZIP file on your computer.
-3. Open `Part 1.html` in your browser (make sure the folder `Part 1_files` is in the same location).
+1. Click the green **Code → Download ZIP** button on this repository.  
+2. Extract the ZIP file on your computer.  
+3. Open `Part 1.html` or `Part 2.html` in your browser.  
+   - Make sure the folders `Part 1_files` and `Part 2_files` are in the same location as their respective `.html` files.
 
 > 📂 Folder structure should look like this:
 >
 > ```
 > ├── Part 1.html  
-> └── Part 1_files/
+> ├── Part 1_files/  
+> ├── Part 2.html  
+> ├── Part 2_files/  
+> └── map.adj
 > ```
+
+---
 
 ✨ Feel free to fork this repo, suggest improvements, or use it as a template for your own spatial statistics learning journey!
